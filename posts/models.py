@@ -13,8 +13,7 @@ class User(models.Model):
 
 class Post(models.Model):
     content = models.TextField()
-
-author = models.ForeignKey(User, related_name='posts', on_delete=models.CASCADE)
+    author = models.ForeignKey(User, related_name='posts', on_delete=models.CASCADE)
     created_at = models.DateTimeField(auto_now_add=True)
 
 
