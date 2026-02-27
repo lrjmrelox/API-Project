@@ -24,7 +24,7 @@ SECRET_KEY = 'django-insecure-w^8ks-!c0$-461@&x4=72rz5@(-mivzl6(he#v&r%oz8%=a$n$
 
 # SECURITY WARNING: don't run with debug turned on in production!
 DEBUG = True
-SECURE_SSL_REDIRECT = True
+SECURE_SSL_REDIRECT = True 
 SESSION_COOKIE_SECURE = True
 CSRF_COOKIE_SECURE = True
 SECURE_HSTS_SECONDS = 31536000
@@ -48,6 +48,7 @@ INSTALLED_APPS = [
     'posts',
     'django_extensions',
 ]
+
 
 
 MIDDLEWARE = [
