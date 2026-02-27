@@ -5,11 +5,13 @@ from .permissions import IsPostAuthor
 from rest_framework import status
 from rest_framework.authentication import TokenAuthentication
 from rest_framework.permissions import IsAuthenticated
+from rest_framework.decorators import api_view, permission_classes
 from django.contrib.auth.models import User, Group # built-in user
 from rest_framework.authtoken.models import Token
 from django.contrib.auth import authenticate
-from .models import User, Post, Comment
-from .serializers import UserSerializer, PostSerializer, CommentSerializer
+from django.shortcuts import get_object_or_404
+from .models import Post, Comment, Like
+from .serializers import UserSerializer, PostSerializer, CommentSerializer, LikeSerializer
 
 
 
@@ -52,7 +54,6 @@ class LoginView(APIView):
         # Check credentials
         user = authenticate(username=username, password=password)
         if user is not None:
-            # You can also include user info
             return Response({
                 "message": "Login successful",
                 "user_id": user.id,
@@ -117,4 +118,66 @@ class ProtectedView(APIView):
 
     def get(self, request):
         return Response({"message": "Authenticated!"})
+    
 
+class LikePost(APIView):
+    authentication_classes = [TokenAuthentication]
+    permission_classes = [IsAuthenticated]
+
+    def post(self, request, id):
+        post = get_object_or_404(Post, id=id)
+
+        like, created = Like.objects.get_or_create(
+            user=request.user,
+            post=post
+        )
+
+        if not created:
+            return Response({"error": "You already liked this post."}, status=400)
+
+        serializer = LikeSerializer(like)
+        return Response(serializer.data, status=201)
+
+
+
+class CommentPost(APIView):
+    authentication_classes = [TokenAuthentication]
+    permission_classes = [IsAuthenticated]
+
+    def post(self, request, id):
+        post = get_object_or_404(Post, id=id)
+
+        text = request.data.get("text")
+        if not text:
+            return Response({"error": "Comment text cannot be empty."}, status=400)
+
+        comment = Comment.objects.create(
+            text=text,
+            author=request.user,
+            post=post
+        )
+
+        serializer = CommentSerializer(comment)
+        return Response(serializer.data, status=201)
+
+
+class GetComments(APIView):
+    authentication_classes = [TokenAuthentication]
+    permission_classes = [IsAuthenticated]
+
+    def get(self, request, id):
+        post = get_object_or_404(Post, id=id)
+        comments = Comment.objects.filter(post=post).order_by('-created_at')
+
+        serializer = CommentSerializer(comments, many=True)
+        return Response(serializer.data)
+
+
+class PostLikesCount(APIView):
+    authentication_classes = [TokenAuthentication]
+    permission_classes = [IsAuthenticated]
+    
+    def get(self, request, id):
+        post = get_object_or_404(Post, id=id)
+        like_count = post.likes.count()
+        return Response({"likes": like_count})
