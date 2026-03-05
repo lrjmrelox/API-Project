@@ -1,4 +1,6 @@
 from rest_framework.views import APIView
+from rest_framework.generics import ListAPIView
+from rest_framework.pagination import PageNumberPagination
 from rest_framework.response import Response
 from rest_framework.permissions import IsAuthenticated
 from .permissions import IsPostAuthor
@@ -14,7 +16,20 @@ from .models import Post, Comment, Like
 from .serializers import UserSerializer, PostSerializer, CommentSerializer, LikeSerializer
 
 
+class FeedPagination(PageNumberPagination):
+    page_size = 10 
+class FeedView(ListAPIView):
+    serializer_class = PostSerializer
+    pagination_class = FeedPagination
 
+    def get_queryset(self):
+        user = self.request.user
+
+        queryset = Post.objects.all().order_by('-created_at')
+
+        queryset = queryset.select_related('author').prefetch_related('comments', 'likes')
+
+        return queryset
 
 class UserListCreate(APIView):
     def get(self, request):

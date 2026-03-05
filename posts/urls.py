@@ -1,5 +1,5 @@
 from django.urls import path
-from .views import UserListCreate, LoginView, ObtainAuthTokenView, PostListCreate, CommentListCreate, LikePost, CommentPost, GetComments, PostLikesCount
+from .views import UserListCreate, LoginView, ObtainAuthTokenView, PostListCreate, CommentListCreate, LikePost, CommentPost, GetComments, PostLikesCount, FeedView
 
 
 
@@ -12,5 +12,6 @@ urlpatterns = [
     path("posts/<int:id>/like/", LikePost.as_view(), name="like-post"),
     path("posts/<int:id>/comment/", CommentPost.as_view(), name="comment-post"),
     path("posts/<int:id>/comments/", GetComments.as_view(), name="get-comments"),
-    path("posts/<int:id>/likes/", PostLikesCount.as_view(), name="post-likes")
+    path("posts/<int:id>/likes/", PostLikesCount.as_view(), name="post-likes"),
+    path('feed/', FeedView.as_view(), name='feed'),
 ]
