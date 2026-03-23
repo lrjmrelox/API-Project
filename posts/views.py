@@ -12,12 +12,14 @@ from django.contrib.auth.models import User, Group # built-in user
 from rest_framework.authtoken.models import Token
 from django.contrib.auth import authenticate
 from django.shortcuts import get_object_or_404
-from .models import Post, Comment, Like
+from django.db.models import Q 
+from .models import Post, Comment, Like, admin_required
 from .serializers import UserSerializer, PostSerializer, CommentSerializer, LikeSerializer
 
 
 class FeedPagination(PageNumberPagination):
     page_size = 10 
+
 class FeedView(ListAPIView):
     serializer_class = PostSerializer
     pagination_class = FeedPagination
@@ -25,10 +27,11 @@ class FeedView(ListAPIView):
     def get_queryset(self):
         user = self.request.user
 
-        queryset = Post.objects.all().order_by('-created_at')
-
+        queryset = Post.objects.filter(
+            Q(privacy='public') | Q(author=user)
+        ).order_by('-created_at')
+    
         queryset = queryset.select_related('author').prefetch_related('comments', 'likes')
-
         return queryset
 
 class UserListCreate(APIView):
@@ -89,16 +92,20 @@ class ObtainAuthTokenView(APIView):
         return Response({"error": "Invalid credentials"}, status=status.HTTP_401_UNAUTHORIZED)
 
 class PostListCreate(APIView):
+    authentication_classes = [TokenAuthentication]
+    permission_classes = [IsAuthenticated]
+
     def get(self, request):
-        posts = Post.objects.all()
+        posts = Post.objects.filter(
+       Q(privacy='public') | Q(author=request.user)
+    ).order_by('-created_at')
         serializer = PostSerializer(posts, many=True)
         return Response(serializer.data)
-
 
     def post(self, request):
         serializer = PostSerializer(data=request.data)
         if serializer.is_valid():
-            serializer.save()
+            serializer.save(author=request.user)
             return Response(serializer.data, status=status.HTTP_201_CREATED)
         return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
 
@@ -117,14 +124,36 @@ class CommentListCreate(APIView):
             return Response(serializer.data, status=status.HTTP_201_CREATED)
         return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
 
+
 class PostDetailView(APIView):
     permission_classes = [IsAuthenticated, IsPostAuthor]
 
 
     def get(self, request, pk):
-        post = Post.objects.get(pk=pk)
+        post = get_object_or_404(pk=pk)
+
+        if post.privacy == 'private' and post.author != request.user:
+            return Response({"error": "Provate post"}, status=403)
+        
         self.check_object_permissions(request, post)
-        return Response({"content": post.content})
+        serializer = PostSerializer(post)
+        return Response(serializer.data)
+
+
+class DeletePost(APIView):
+    authentication_classes = [TokenAuthentication]
+    permission_classes = [IsAuthenticated]
+
+    def delete(self, request, pk):
+        post = get_object_or_404(Post, pk=pk)
+
+        # Only admins can delete posts
+        if not request.user.is_superuser and request.user.groups.filter(name='admin').exists() == False:
+            return Response({"error": "Admin access required to delete posts"}, status=403)
+
+        post.delete()
+        return Response({"message": "Post deleted"}, status=200)
+    
 
 class ProtectedView(APIView):
     authentication_classes = [TokenAuthentication]

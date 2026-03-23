@@ -1,22 +1,24 @@
 from django.db import models
-from django.contrib.auth.models import User
+from django.contrib.auth.models import User, Group, Permission
+from rest_framework.response import Response
 
 
 class Post(models.Model):
     content = models.TextField()
-    author = models.ForeignKey(User, on_delete=models.CASCADE, null=True, blank=True)
+    author = models.ForeignKey(User, on_delete=models.CASCADE)
+    privacy = models.CharField(
+        max_length=7,
+        choices=[('public', 'Public'), ('private', 'Private')],
+        default='public'
+    )
     created_at = models.DateTimeField(auto_now_add=True)
 
-    def __str__(self):
-        return f"Post by {self.author.username} at {self.created_at}"
-
-    @property
-    def like_count(self):
-        return Like.objects.filter(post=self).count()
-    
-    @property
-    def comment_count(self):
-        return self.comments.count()
+def admin_required(func):
+    def wrapper(request, *args, **kwargs):
+        if not request.user.groups.filter(name='admin').exists():
+            return Response({'error': 'Admin access required'}, status=403)
+        return func(request, *args, **kwargs)
+    return wrapper
 
 
 class Comment(models.Model):
