@@ -10,6 +10,7 @@ from rest_framework.permissions import IsAuthenticated
 from rest_framework.decorators import api_view, permission_classes
 from django.contrib.auth.models import User, Group # built-in user
 from rest_framework.authtoken.models import Token
+from django.core.cache import cache
 from django.contrib.auth import authenticate
 from django.shortcuts import get_object_or_404
 from django.db.models import Q 
@@ -18,21 +19,54 @@ from .serializers import UserSerializer, PostSerializer, CommentSerializer, Like
 
 
 class FeedPagination(PageNumberPagination):
-    page_size = 10 
+    page_size = 5
 
-class FeedView(ListAPIView):
+
+class FeedView(APIView):
     serializer_class = PostSerializer
     pagination_class = FeedPagination
 
-    def get_queryset(self):
-        user = self.request.user
+    def get(self, request):
+        print(">>> FEEDVIEW IS EXECUTING", flush=True)
+        page = request.query_params.get('page', 1)
+        cache_key = f"feed_page_{page}"
 
-        queryset = Post.objects.filter(
-            Q(privacy='public') | Q(author=user)
-        ).order_by('-created_at')
+        # DEBUG LOGS – These will ALWAYS show
+        cached_data = cache.get(cache_key)
+        if cached_data:
+            print(">>> CACHE HIT:", cache_key, flush=True)
+            return Response(cached_data)
+        
+        print(">>> CACHE MISS:", cache_key, flush=True)
+
+        user = request.user
+
+        # Handle anonymous VS authenticated users
+        if user.is_authenticated:
+            queryset = Post.objects.filter(
+                Q(privacy='public') | Q(author=user)
+            )
+        else:
+            queryset = Post.objects.filter(privacy="public")
+
+        # Query optimization
+        queryset = queryset.select_related('author') \
+                           .prefetch_related('comments', 'likes') \
+                           .order_by('-created_at')
+
+        # Pagination
+        paginator = FeedPagination()
+        result_page = paginator.paginate_queryset(queryset, request)
+
+        serializer = PostSerializer(result_page, many=True)
+        response_data = paginator.get_paginated_response(serializer.data).data
+
+        # Store in cache
+        cache.set(cache_key, response_data, timeout=60)
+
+        return Response(response_data)
     
-        queryset = queryset.select_related('author').prefetch_related('comments', 'likes')
-        return queryset
+
 
 class UserListCreate(APIView):
     def get(self, request):
@@ -61,6 +95,8 @@ class UserListCreate(APIView):
         serializer = UserSerializer(user)
         return Response(serializer.data, status=status.HTTP_201_CREATED)
 
+
+
 class LoginView(APIView):
     def post(self, request):
         username = request.data.get("username")
@@ -80,6 +116,8 @@ class LoginView(APIView):
         else:
             return Response({"error": "Invalid credentials"}, status=status.HTTP_401_UNAUTHORIZED)
 
+
+
 class ObtainAuthTokenView(APIView):
     def post(self, request):
         username = request.data.get("username")
@@ -90,6 +128,8 @@ class ObtainAuthTokenView(APIView):
             token, _ = Token.objects.get_or_create(user=user)
             return Response({"token": token.key})
         return Response({"error": "Invalid credentials"}, status=status.HTTP_401_UNAUTHORIZED)
+
+
 
 class PostListCreate(APIView):
     authentication_classes = [TokenAuthentication]
@@ -116,7 +156,6 @@ class CommentListCreate(APIView):
         serializer = CommentSerializer(comments, many=True)
         return Response(serializer.data)
 
-
     def post(self, request):
         serializer = CommentSerializer(data=request.data)
         if serializer.is_valid():
@@ -128,9 +167,8 @@ class CommentListCreate(APIView):
 class PostDetailView(APIView):
     permission_classes = [IsAuthenticated, IsPostAuthor]
 
-
     def get(self, request, pk):
-        post = get_object_or_404(pk=pk)
+        post = get_object_or_404(Post, pk=pk)
 
         if post.privacy == 'private' and post.author != request.user:
             return Response({"error": "Provate post"}, status=403)
@@ -163,6 +201,7 @@ class ProtectedView(APIView):
     def get(self, request):
         return Response({"message": "Authenticated!"})
     
+
 
 class LikePost(APIView):
     authentication_classes = [TokenAuthentication]
